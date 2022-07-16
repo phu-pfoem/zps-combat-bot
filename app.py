@@ -3,38 +3,29 @@ from time import sleep
 
 from flask import Flask, request
 import telegram
-from telebot.credentials import bot_token, bot_user_name, bot_url
+
+import utils
+from command import send_welcome_msg
+from telebot.credentials import bot_token, bot_url
 
 bot = telegram.Bot(token=bot_token)
-
 app = Flask(__name__)
+_command_map = {
+    '/start': send_welcome_msg,
+}
 
 
 @app.route('/{}'.format(bot_token), methods=['POST'])
 def respond():
     # retrieve the message in JSON and then transform it to Telegram object
     update = telegram.Update.de_json(request.get_json(force=True), bot)
+    chat_id, msg_id, text = utils.get_relevant_info(update)
 
-    chat_id = update.message.chat.id
-    msg_id = update.message.message_id
-
-    # Telegram understands UTF-8, so encode text for unicode compatibility
-    text = update.message.text.encode('utf-8').decode()
-    # for debugging purposes only
-    print("got text message :", text)
     # the first time you chat with the bot AKA the welcoming message
-    if text == "/start":
-        # print the welcoming message
-        bot_welcome = """
-           Welcome to coolAvatar bot, the bot is using the service from http://avatars.adorable.io/ to generate cool looking avatars based on the name you enter so please enter a name and the bot will reply with an avatar for your name.
-           """
-        # send the welcoming message
-        bot.sendChatAction(chat_id=chat_id, action="typing")
-        sleep(1.5)
-        bot.sendMessage(chat_id=chat_id, text=bot_welcome, reply_to_message_id=msg_id)
-
-
+    if text in _command_map:
+        _command_map.get(text)(bot=bot, chat_id=chat_id, msg_id=msg_id)
     else:
+        # noinspection PyBroadException
         try:
             # clear the message we got from any non alphabets
             text = re.sub(r"\W", "_", text)
@@ -52,6 +43,21 @@ def respond():
                             reply_to_message_id=msg_id)
 
     return 'ok'
+
+
+@app.route('/set_webhook', methods=['GET', 'POST'])
+def set_webhook():
+    s = bot.setWebhook('{url}{hook}'.format(url=bot_url, hook=bot_token))
+
+    if s:
+        return "ok" + '{url}{hook}'.format(url=bot_url, hook=bot_token)
+    else:
+        return "failed"
+
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    return "Hi, Mị là ZPS Combat Bốt, với sứ mệnh giúp mụi ngừ combat thật zui ó \U0001F449\U0001F448"
 
 
 if __name__ == '__main__':
